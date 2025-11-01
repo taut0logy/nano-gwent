@@ -1,0 +1,123 @@
+import pygame
+import sys
+from core.game_state import GameState
+from core.game_engine import GameEngine
+from gui.game_gui import GameGUI
+from gui.menu import GameMenu
+from gui.config import SCREEN_WIDTH, SCREEN_HEIGHT
+
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("Nano Gwent - AI Card Game")
+    
+    menu = GameMenu(screen)
+    clock = pygame.time.Clock()
+    
+    while True:
+        game_config = menu.run()
+        
+        if game_config is None:
+            break
+        
+        game_state = GameState()
+        game_state.initialize()
+        game_engine = GameEngine(game_state)
+        gui = GameGUI(screen)
+        
+        player0_agent = None
+        player1_agent = None
+        
+        if game_config['mode'] == 'human_vs_human':
+            pass
+        elif game_config['mode'] == 'human_vs_ai':
+            agent_class = game_config['ai_agent']
+            player1_agent = agent_class(1)
+        elif game_config['mode'] == 'ai_vs_ai':
+            agent0_class = game_config['ai_agent_0']
+            agent1_class = game_config['ai_agent_1']
+            player0_agent = agent0_class(0)
+            player1_agent = agent1_class(1)
+        
+        # Reset banner state for new game
+        gui.last_round_number = 0
+        gui.banner_state = None
+        gui.banner_start_time = 0
+        
+        running = True
+        
+        while running:
+            clock.tick(60)
+            
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    running = False
+                elif game_state.game_over:
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                        running = False
+            
+            if not game_state.game_over:
+                game_engine.check_auto_end_round()
+            
+            # Check if announcements are showing
+            announcements_showing = gui.banner_state is not None
+            
+            if not game_state.game_over and not announcements_showing:
+                current_player_id = game_state.current_player
+                
+                if current_player_id == 0:
+                    if player0_agent:
+                        pygame.time.wait(500)
+                        valid_actions = game_engine.get_valid_actions()
+                        action = player0_agent.decide_action(game_state, valid_actions)
+                        game_engine.execute_action(action)
+                    else:
+                        action = gui.handle_input(game_state)
+                        if action:
+                            valid_actions = game_engine.get_valid_actions()
+                            if _is_action_valid(action, valid_actions):
+                                game_engine.execute_action(action)
+                                gui.selected_card = None
+                
+                elif current_player_id == 1:
+                    if player1_agent:
+                        pygame.time.wait(500)
+                        valid_actions = game_engine.get_valid_actions()
+                        action = player1_agent.decide_action(game_state, valid_actions)
+                        game_engine.execute_action(action)
+                    else:
+                        action = gui.handle_input(game_state)
+                        if action:
+                            valid_actions = game_engine.get_valid_actions()
+                            if _is_action_valid(action, valid_actions):
+                                game_engine.execute_action(action)
+                                gui.selected_card = None
+            
+            gui.render(game_state)
+            
+            if game_state.game_over:
+                gui.show_game_over(game_state)
+            
+            pygame.display.flip()
+        
+        if game_state.game_over:
+            pygame.time.wait(2000)
+    
+    pygame.quit()
+    sys.exit()
+
+def _is_action_valid(action, valid_actions):
+    for valid_action in valid_actions:
+        if action.type == valid_action.type:
+            if action.card is None and valid_action.card is None:
+                return True
+            if action.card and valid_action.card and action.card.id == valid_action.card.id:
+                if action.target_row == valid_action.target_row:
+                    return True
+    return False
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,6 @@
+pygame
+matplotlib
+scikit-fuzzy
+matplotlib
+scipy
+numpy
