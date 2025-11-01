@@ -46,42 +46,46 @@ class GameGUI:
         
         self.board_rect = pygame.Rect(320, 120, 850, 530)
         
-        self.pass_button = Button(50, 680, 100, 50, "PASS", RED)
+        # Player 1 (bottom) controls
+        self.pass_button = Button(210, 700, 80, 40, "PASS", RED)
         self.row_buttons = {
             'melee': Button(180, 350, 100, 40, "Melee", BLUE),
             'ranged': Button(180, 300, 100, 40, "Ranged", BLUE),
             'siege': Button(180, 250, 100, 40, "Siege", BLUE)
         }
         
+        # Player 2 (top) controls
+        self.pass_button_p2 = Button(210, 40, 80, 40, "PASS", RED)
+        self.row_buttons_p2 = {
+            'siege': Button(180, 150, 100, 40, "Siege", BLUE),
+            'ranged': Button(180, 200, 100, 40, "Ranged", BLUE),
+            'melee': Button(180, 250, 100, 40, "Melee", BLUE)
+        }
+        
         self.hover_offset = 0
         self.hover_speed = 3
         
-        # Load row icons
         self.row_icons = {}
         try:
             self.row_icons['melee'] = pygame.image.load('assets/images/melee.png')
             self.row_icons['ranged'] = pygame.image.load('assets/images/ranged.png')
             self.row_icons['siege'] = pygame.image.load('assets/images/siege.png')
             
-            # Scale icons to 24x24 for circular background display
             for row_name in self.row_icons:
                 self.row_icons[row_name] = pygame.transform.scale(self.row_icons[row_name], (24, 24))
         except Exception as e:
             print(f"Warning: Could not load row icons: {e}")
             self.row_icons = None
         
-        # Load star icon for round wins
         try:
             self.star_icon = pygame.image.load('assets/images/star.png')
             self.star_icon = pygame.transform.scale(self.star_icon, (28, 28))
         except Exception as e:
             print(f"Warning: Could not load star icon: {e}")
             self.star_icon = None
-        
-        # Create gray star for lost rounds
+            
         try:
             if self.star_icon:
-                # Create a grayscale version of the star
                 self.gray_star_icon = self.star_icon.copy()
                 # Apply gray tint
                 gray_overlay = pygame.Surface(self.gray_star_icon.get_size())
@@ -93,7 +97,6 @@ class GameGUI:
             print(f"Warning: Could not create gray star: {e}")
             self.gray_star_icon = None
         
-        # Banner state tracking
         self.last_round_number = 0
         self.banner_state = None  # None, 'round_end', or 'round_start'
         self.banner_start_time = 0
@@ -173,6 +176,7 @@ class GameGUI:
             sprite = CardSprite(anim.card, int(anim.current_x), int(anim.current_y))
             sprite.draw(self.screen)
         
+        # Player 1 (bottom) controls
         if game_state.current_player == 0 and not game_state.game_over and not game_state.players[0].passed:
             self.pass_button.draw(self.screen)
             if self.selected_card and self.selected_card.card_type == -1:
@@ -201,6 +205,35 @@ class GameGUI:
                 for button in self.row_buttons.values():
                     button.draw(self.screen)
         
+        # Player 2 (top) controls
+        if game_state.current_player == 1 and not game_state.game_over and not game_state.players[1].passed:
+            self.pass_button_p2.draw(self.screen)
+            if self.selected_card and self.selected_card.card_type == -1:
+                # Find the selected card's position
+                selected_card_x = None
+                for sprite in self.card_sprites:
+                    if sprite.card == self.selected_card:
+                        selected_card_x = sprite.rect.centerx
+                        break
+                
+                # Position buttons below the selected card (for player 2)
+                if selected_card_x is not None:
+                    button_y_base = 110  # Below the hand area for player 2
+                    button_spacing = 45
+                    
+                    # Update button positions dynamically
+                    self.row_buttons_p2['siege'].rect.centerx = selected_card_x
+                    self.row_buttons_p2['siege'].rect.y = button_y_base
+
+                    self.row_buttons_p2['ranged'].rect.centerx = selected_card_x
+                    self.row_buttons_p2['ranged'].rect.y = button_y_base + button_spacing
+
+                    self.row_buttons_p2['melee'].rect.centerx = selected_card_x
+                    self.row_buttons_p2['melee'].rect.y = button_y_base + button_spacing * 2
+                
+                for button in self.row_buttons_p2.values():
+                    button.draw(self.screen)
+        
         if self.banner_state == 'round_end':
             self._draw_round_end_announcement()
         elif self.banner_state == 'round_start':
@@ -223,7 +256,7 @@ class GameGUI:
         
         # Round number
         round_text = FONT_TITLE.render(f"ROUND {game_state.round_number}/3", True, WHITE)
-        round_rect = round_text.get_rect(center=(120, 390))
+        round_rect = round_text.get_rect(center=(150, 390))
         self.screen.blit(round_text, round_rect)
     
     def _draw_boards(self, game_state):
@@ -316,6 +349,7 @@ class GameGUI:
         
         self.card_sprites = []
         
+        # Draw Player 1 (bottom) hand
         for i, card in enumerate(p1_hand):
             x = 350 + i * (CARD_WIDTH + 5)
             y_offset = 0
@@ -333,9 +367,22 @@ class GameGUI:
             self.card_sprites.append(sprite)
             sprite.draw(self.screen)
         
+        # Draw Player 2 (top) hand - NOW INTERACTIVE
         for i, card in enumerate(p2_hand):
             x = 350 + i * (CARD_WIDTH + 5)
-            sprite = CardSprite(card, x, hand_y_p2)
+            y_offset = 0
+            
+            sprite = CardSprite(card, x, hand_y_p2 + y_offset)
+            
+            if self.selected_card == card:
+                sprite.selected = True
+                y_offset = -10
+                sprite.y = hand_y_p2 + y_offset
+            elif sprite.rect.collidepoint(pygame.mouse.get_pos()):
+                hover_amount = abs(10 - (self.hover_offset % 20)) / 2
+                sprite.y = hand_y_p2 + hover_amount  # Hover down for top player
+            
+            self.card_sprites.append(sprite)
             sprite.draw(self.screen)
     
     def _draw_score(self, game_state):
@@ -418,6 +465,7 @@ class GameGUI:
 
     def handle_input(self, game_state):
         current_player = game_state.players[game_state.current_player]
+        current_player_id = game_state.current_player
         
         if current_player.passed:
             return None
@@ -425,19 +473,31 @@ class GameGUI:
         mouse_pos = pygame.mouse.get_pos()
         mouse_pressed = pygame.mouse.get_pressed()
         
-        self.pass_button.update(mouse_pos)
-        for button in self.row_buttons.values():
-            button.update(mouse_pos)
+        # Update appropriate buttons based on current player
+        if current_player_id == 0:
+            self.pass_button.update(mouse_pos)
+            for button in self.row_buttons.values():
+                button.update(mouse_pos)
+        else:  # player 1 (top)
+            self.pass_button_p2.update(mouse_pos)
+            for button in self.row_buttons_p2.values():
+                button.update(mouse_pos)
         
         for sprite in self.card_sprites:
             sprite.update(mouse_pos)
         
         if mouse_pressed[0]:
-            if self.pass_button.is_clicked(mouse_pos, mouse_pressed):
-                return Action(Action.PASS)
+            # Check pass button
+            if current_player_id == 0:
+                if self.pass_button.is_clicked(mouse_pos, mouse_pressed):
+                    return Action(Action.PASS)
+            else:
+                if self.pass_button_p2.is_clicked(mouse_pos, mouse_pressed):
+                    return Action(Action.PASS)
             
+            # Check card selection
             for sprite in self.card_sprites:
-                if sprite.hovered and sprite.card in game_state.players[0].hand:
+                if sprite.hovered and sprite.card in current_player.hand:
                     if self.selected_card == sprite.card:
                         self.selected_card = None
                     else:
@@ -445,6 +505,7 @@ class GameGUI:
                     pygame.time.wait(100)
                     break
             
+            # Check card actions
             if self.selected_card:
                 if self.selected_card.card_type in [0, 1, 2]:
                     row_name = {0: 'melee', 1: 'ranged', 2: 'siege'}[self.selected_card.card_type]
@@ -456,11 +517,19 @@ class GameGUI:
                     return action
                 
                 elif self.selected_card.card_type == -1:
-                    for row_name, button in self.row_buttons.items():
-                        if button.is_clicked(mouse_pos, mouse_pressed):
-                            action = Action(Action.PLAY_SPECIAL, self.selected_card, row_name)
-                            self.selected_card = None
-                            return action
+                    # Check row buttons based on current player
+                    if current_player_id == 0:
+                        for row_name, button in self.row_buttons.items():
+                            if button.is_clicked(mouse_pos, mouse_pressed):
+                                action = Action(Action.PLAY_SPECIAL, self.selected_card, row_name)
+                                self.selected_card = None
+                                return action
+                    else:
+                        for row_name, button in self.row_buttons_p2.items():
+                            if button.is_clicked(mouse_pos, mouse_pressed):
+                                action = Action(Action.PLAY_SPECIAL, self.selected_card, row_name)
+                                self.selected_card = None
+                                return action
         
         return None
     
