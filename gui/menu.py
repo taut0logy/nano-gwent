@@ -1,5 +1,5 @@
 import pygame
-from gui.config import COLORS, FONTS
+from gui.config import COLORS
 
 class Button:
     def __init__(self, x, y, width, height, text, font):

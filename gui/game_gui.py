@@ -78,6 +78,21 @@ class GameGUI:
             print(f"Warning: Could not load star icon: {e}")
             self.star_icon = None
         
+        # Create gray star for lost rounds
+        try:
+            if self.star_icon:
+                # Create a grayscale version of the star
+                self.gray_star_icon = self.star_icon.copy()
+                # Apply gray tint
+                gray_overlay = pygame.Surface(self.gray_star_icon.get_size())
+                gray_overlay.fill((100, 100, 100))
+                self.gray_star_icon.blit(gray_overlay, (0, 0), special_flags=pygame.BLEND_MULT)
+            else:
+                self.gray_star_icon = None
+        except Exception as e:
+            print(f"Warning: Could not create gray star: {e}")
+            self.gray_star_icon = None
+        
         # Banner state tracking
         self.last_round_number = 0
         self.banner_state = None  # None, 'round_end', or 'round_start'
@@ -161,10 +176,31 @@ class GameGUI:
         if game_state.current_player == 0 and not game_state.game_over and not game_state.players[0].passed:
             self.pass_button.draw(self.screen)
             if self.selected_card and self.selected_card.card_type == -1:
+                # Find the selected card's position
+                selected_card_x = None
+                for sprite in self.card_sprites:
+                    if sprite.card == self.selected_card:
+                        selected_card_x = sprite.rect.centerx
+                        break
+                
+                # Position buttons above the selected card
+                if selected_card_x is not None:
+                    button_y_base = 530  # Above the hand area
+                    button_spacing = 45
+                    
+                    # Update button positions dynamically
+                    self.row_buttons['siege'].rect.centerx = selected_card_x
+                    self.row_buttons['siege'].rect.y = button_y_base
+
+                    self.row_buttons['ranged'].rect.centerx = selected_card_x
+                    self.row_buttons['ranged'].rect.y = button_y_base + button_spacing
+
+                    self.row_buttons['melee'].rect.centerx = selected_card_x
+                    self.row_buttons['melee'].rect.y = button_y_base + button_spacing * 2
+                
                 for button in self.row_buttons.values():
                     button.draw(self.screen)
         
-        # Draw banners
         if self.banner_state == 'round_end':
             self._draw_round_end_announcement()
         elif self.banner_state == 'round_start':
@@ -174,20 +210,20 @@ class GameGUI:
     
     def _draw_round_info(self, game_state):
         # Smaller info box with only round number
-        info_bg = pygame.Surface((200, 100))
+        info_bg = pygame.Surface((160, 50))
         info_bg.fill((40, 30, 20))
         info_bg.set_alpha(220)
-        self.screen.blit(info_bg, (20, 20))
-        pygame.draw.rect(self.screen, GOLD, (20, 20, 200, 100), 3)
+        self.screen.blit(info_bg, (10, 10))
+        pygame.draw.rect(self.screen, GOLD, (10, 10, 160, 50), 3)
 
         # Title
         title = FONT_MEDIUM.render("NANO GWENT", True, GOLD)
-        title_rect = title.get_rect(center=(120, 45))
+        title_rect = title.get_rect(center=(90, 35))
         self.screen.blit(title, title_rect)
         
-        # Emphasized round number
+        # Round number
         round_text = FONT_TITLE.render(f"ROUND {game_state.round_number}/3", True, WHITE)
-        round_rect = round_text.get_rect(center=(120, 85))
+        round_rect = round_text.get_rect(center=(120, 390))
         self.screen.blit(round_text, round_rect)
     
     def _draw_boards(self, game_state):
@@ -232,7 +268,6 @@ class GameGUI:
             
             icon_surface = FONT_LARGE.render(row_icon, True, (200, 180, 150))
             self.screen.blit(icon_surface, (icon_x + 12, icon_y + 12))
-        
         
         # Draw cards in the row
         cards = player.board[row_name]
@@ -307,7 +342,7 @@ class GameGUI:
         p1_strength = game_state.players[0].get_board_strength()
         p2_strength = game_state.players[1].get_board_strength()
         
-        # Player 2 score (opponent)
+        # Player 2 score
         p2_color = (255, 100, 100) if p2_strength > p1_strength else WHITE
         p2_text = FONT_LARGE.render(f"{p2_strength}", True, p2_color)
         
@@ -318,59 +353,69 @@ class GameGUI:
         
         # Player 2 label
         p2_label = FONT_LARGE.render("Player 2", True, WHITE)
-        p2_label_rect = p2_label.get_rect(midleft=(105, 255))
+        p2_label_rect = p2_label.get_rect(midleft=(105, 225))
         
         # Draw border if it's player 2's turn
         if game_state.current_player == 1:
             border_rect = pygame.Rect(p2_label_rect.x - 5, p2_label_rect.y - 5, 
-                                     p2_label_rect.width + 10, p2_label_rect.height + 10)
+                                    p2_label_rect.width + 10, p2_label_rect.height + 10)
             pygame.draw.rect(self.screen, (255, 100, 100), border_rect, 2)
         
         self.screen.blit(p2_label, p2_label_rect)
 
-        # Player 2 pass status (below label)
+        # Player 2 pass status
         if game_state.players[1].passed:
             p2_pass = FONT_SMALL.render("PASSED", True, (150, 150, 150))
-            self.screen.blit(p2_pass, (125, 275))
+            self.screen.blit(p2_pass, (225, 305))
             
-        # Player 2 won rounds (below pass status)
-        p2_won = game_state.players[1].rounds_won
-        star_x = p2_label_rect.centerx - 16
-        for i in range(p2_won):
-            self.screen.blit(self.star_icon, (star_x, 290 + i * 32))
+        p2_lost = game_state.players[0].rounds_won
+        star_x = p2_label_rect.centerx - 32
         
-        # Player 1 score (you)
+        for i in range(2):
+            if i < (2 - p2_lost):
+                if self.star_icon:
+                    self.screen.blit(self.star_icon, (star_x + i * 32, 260))
+            else:
+                if self.gray_star_icon:
+                    self.screen.blit(self.gray_star_icon, (star_x + i * 32, 260))
+        
+        # Player 1 score
         p1_color = (100, 255, 100) if p1_strength > p2_strength else WHITE
         p1_text = FONT_LARGE.render(f"{p1_strength}", True, p1_color)
         
-        p1_center = (250, 525)
+        p1_center = (250, 520)
         pygame.draw.circle(self.screen, p1_color, p1_center, 30, 3)
         p1_text_rect = p1_text.get_rect(center=p1_center)
         self.screen.blit(p1_text, p1_text_rect)
         
         # Player 1 label
         p1_label = FONT_LARGE.render("Player 1", True, WHITE)
-        p1_label_rect = p1_label.get_rect(midleft=(105, 525))
+        p1_label_rect = p1_label.get_rect(midleft=(105, 495))
         
         # Draw border if it's player 1's turn
         if game_state.current_player == 0:
             border_rect = pygame.Rect(p1_label_rect.x - 5, p1_label_rect.y - 5, 
-                                     p1_label_rect.width + 10, p1_label_rect.height + 10)
+                                    p1_label_rect.width + 10, p1_label_rect.height + 10)
             pygame.draw.rect(self.screen, (100, 255, 100), border_rect, 2)
         
         self.screen.blit(p1_label, p1_label_rect)
         
-        # Player 1 pass status (below label)
+        # Player 1 pass status
         if game_state.players[0].passed:
             p1_pass = FONT_SMALL.render("PASSED", True, (150, 150, 150))
-            self.screen.blit(p1_pass, (125, 545))
+            self.screen.blit(p1_pass, (225, 570))
             
-        # Player 1 won rounds (below pass status)
-        p1_won = game_state.players[0].rounds_won
-        star_x = p1_label_rect.centerx - 16
-        for i in range(p1_won):
-            self.screen.blit(self.star_icon, (star_x, 560+ i * 32))
-    
+        p1_lost = game_state.players[1].rounds_won
+        star_x = p1_label_rect.centerx - 32
+        
+        for i in range(2):
+            if i < (2 - p1_lost):
+                if self.star_icon:
+                    self.screen.blit(self.star_icon, (star_x + i * 32, 530))
+            else:
+                if self.gray_star_icon:
+                    self.screen.blit(self.gray_star_icon, (star_x + i * 32, 530))
+
     def handle_input(self, game_state):
         current_player = game_state.players[game_state.current_player]
         
@@ -433,14 +478,8 @@ class GameGUI:
         pygame.draw.rect(self.screen, GOLD, result_box_rect, 4)
         
         # Title at the top
-        if winner is not None:
-            if winner == 0:
-                text = FONT_TITLE.render("Victory!", True, (100, 255, 100))
-            else:
-                text = FONT_TITLE.render("Defeat", True, (255, 100, 100))
-        else:
-            text = FONT_TITLE.render("Draw!", True, WHITE)
-        
+        text = FONT_TITLE.render("Match Over!", True, (100, 255, 100))
+
         text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 180))
         self.screen.blit(text, text_rect)
         
@@ -465,12 +504,12 @@ class GameGUI:
                 round_displays.append((str(p0_score), str(p1_score), p0_score, p1_score))
             else:
                 round_displays.append(("-", "-", 0, 0))
-        
-        # Draw You: row with colored scores
-        you_label = FONT_MEDIUM.render("You:", True, (100, 255, 100))
-        you_label_rect = you_label.get_rect()
-        you_label_rect.midleft = (SCREEN_WIDTH // 2 - 250, table_y)
-        self.screen.blit(you_label, you_label_rect)
+
+        # Draw Player 1: row with colored scores
+        p1_label = FONT_MEDIUM.render("Player 1:", True, (100, 255, 100))
+        p1_label_rect = p1_label.get_rect()
+        p1_label_rect.midleft = (SCREEN_WIDTH // 2 - 250, table_y)
+        self.screen.blit(p1_label, p1_label_rect)
         
         x_offset = SCREEN_WIDTH // 2 - 130
         for i, (p0_str, p1_str, p0_score, p1_score) in enumerate(round_displays):
@@ -488,12 +527,12 @@ class GameGUI:
             self.screen.blit(score_text, score_rect)
         
         table_y += 40
-        
-        # Draw Opp: row with colored scores
-        opp_label = FONT_MEDIUM.render("Opp:", True, (255, 100, 100))
-        opp_label_rect = opp_label.get_rect()
-        opp_label_rect.midleft = (SCREEN_WIDTH // 2 - 250, table_y)
-        self.screen.blit(opp_label, opp_label_rect)
+
+        # Draw Player 2: row with colored scores
+        p2_label = FONT_MEDIUM.render("Player 2:", True, (255, 100, 100))
+        p2_label_rect = p2_label.get_rect()
+        p2_label_rect.midleft = (SCREEN_WIDTH // 2 - 250, table_y)
+        self.screen.blit(p2_label, p2_label_rect)
         
         x_offset = SCREEN_WIDTH // 2 - 130
         for i, (p0_str, p1_str, p0_score, p1_score) in enumerate(round_displays):
@@ -527,10 +566,6 @@ class GameGUI:
         continue_text = FONT_MEDIUM.render("Press SPACE to return to menu", True, WHITE)
         continue_rect = continue_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 180))
         self.screen.blit(continue_text, continue_rect)
-        
-        esc_text = FONT_SMALL.render("Press ESC to return immediately", True, GRAY)
-        esc_rect = esc_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 210))
-        self.screen.blit(esc_text, esc_rect)
 
     def _draw_round_start_announcement(self, game_state):
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))

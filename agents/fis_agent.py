@@ -138,9 +138,10 @@ class FISAgent(BaseAgent):
                         score *= 1.1  # Slight boost for playing units early
                 
                 action_scores[action] = score
-            except:
+            except Exception as e:
                 action_scores[action] = 50
-        
+                print(f"Error occurred while scoring action {action}: {e}")
+
         if not action_scores:
             return valid_actions[0]
         
