@@ -71,6 +71,11 @@ Built with Python and pygame for visualization.
 
 ### 4. Game Flow
 
+#### Starting a Round
+
+- in round 1, Player 0 starts first
+- starting player alternates each round
+
 #### Turn Structure
 
 Players alternate turns. On each turn, a player must choose ONE action:

@@ -39,10 +39,12 @@ def main():
             player0_agent = agent0_class(0)
             player1_agent = agent1_class(1)
         
-        # Reset banner state for new game
         gui.last_round_number = 0
         gui.banner_state = None
         gui.banner_start_time = 0
+        
+        match_started = False
+        first_render_done = False
         
         running = True
         
@@ -59,13 +61,27 @@ def main():
                     if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                         running = False
             
+            # Render first to trigger the banner
+            gui.render(game_state)
+            
+            if not first_render_done:
+                first_render_done = True
+            
             if not game_state.game_over:
                 game_engine.check_auto_end_round()
             
-            # Check if announcements are showing
             announcements_showing = gui.banner_state is not None
             
-            if not game_state.game_over and not announcements_showing:
+            # For AI vs AI, wait for initial banner to complete before starting
+            if game_config['mode'] == 'ai_vs_ai' and not match_started:
+                if first_render_done and gui.banner_state is None:
+                    match_started = True
+            
+            can_make_move = not game_state.game_over and not announcements_showing
+            if game_config['mode'] == 'ai_vs_ai':
+                can_make_move = can_make_move and match_started
+            
+            if can_make_move:
                 current_player_id = game_state.current_player
                 
                 if current_player_id == 0:
@@ -95,8 +111,6 @@ def main():
                             if _is_action_valid(action, valid_actions):
                                 game_engine.execute_action(action)
                                 gui.selected_card = None
-            
-            gui.render(game_state)
             
             if game_state.game_over:
                 gui.show_game_over(game_state)

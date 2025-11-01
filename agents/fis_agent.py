@@ -3,146 +3,341 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 from agents.base_agent import BaseAgent
 from core.action import Action
+import random
 
 class FISAgent(BaseAgent):
     def __init__(self, player_id):
         super().__init__(player_id)
-        self._setup_fuzzy_system()
+        self.fuzzy_system = self._build_fuzzy_system()
     
-    def _setup_fuzzy_system(self):
-        self.strength_diff = ctrl.Antecedent(np.arange(-50, 51, 1), 'strength_diff')
-        self.cards_in_hand = ctrl.Antecedent(np.arange(0, 13, 1), 'cards_in_hand')
-        self.round_num = ctrl.Antecedent(np.arange(1, 4, 1), 'round_num')
-        self.opp_passed = ctrl.Antecedent(np.arange(0, 2, 1), 'opp_passed')
-        self.opp_threat = ctrl.Antecedent(np.arange(0, 11, 1), 'opp_threat')
+    def _build_fuzzy_system(self):
+        """
+        Build the Mamdani Fuzzy Inference System with input/output variables,
+        membership functions, and fuzzy rules.
+        """
         
-        self.action_priority = ctrl.Consequent(np.arange(0, 101, 1), 'action_priority')
+        # ==================== INPUT VARIABLES ====================
         
-        self.strength_diff['losing_big'] = fuzz.trimf(self.strength_diff.universe, [-50, -50, -15])
-        self.strength_diff['losing_small'] = fuzz.trimf(self.strength_diff.universe, [-20, -10, 0])
-        self.strength_diff['even'] = fuzz.trimf(self.strength_diff.universe, [-5, 0, 5])
-        self.strength_diff['winning_small'] = fuzz.trimf(self.strength_diff.universe, [0, 10, 20])
-        self.strength_diff['winning_big'] = fuzz.trimf(self.strength_diff.universe, [15, 50, 50])
+        # 1. Strength Difference (current board strength: my - opponent)
+        # Range: -100 to 100 (can be negative if losing)
+        strength_diff = ctrl.Antecedent(np.arange(-100, 101, 1), 'strength_diff')
+        strength_diff['losing_badly'] = fuzz.trapmf(strength_diff.universe, [-100, -100, -30, -15])
+        strength_diff['losing'] = fuzz.trimf(strength_diff.universe, [-25, -10, 0])
+        strength_diff['tied'] = fuzz.trimf(strength_diff.universe, [-5, 0, 5])
+        strength_diff['winning'] = fuzz.trimf(strength_diff.universe, [0, 10, 25])
+        strength_diff['winning_big'] = fuzz.trapmf(strength_diff.universe, [15, 30, 100, 100])
         
-        self.cards_in_hand['few'] = fuzz.trimf(self.cards_in_hand.universe, [0, 0, 3])
-        self.cards_in_hand['medium'] = fuzz.trimf(self.cards_in_hand.universe, [2, 5, 8])
-        self.cards_in_hand['many'] = fuzz.trimf(self.cards_in_hand.universe, [7, 12, 12])
+        # 2. Cards in Hand (resource availability)
+        # Range: 0 to 12
+        cards_in_hand = ctrl.Antecedent(np.arange(0, 13, 1), 'cards_in_hand')
+        cards_in_hand['very_few'] = fuzz.trapmf(cards_in_hand.universe, [0, 0, 1, 3])
+        cards_in_hand['few'] = fuzz.trimf(cards_in_hand.universe, [2, 4, 6])
+        cards_in_hand['moderate'] = fuzz.trimf(cards_in_hand.universe, [5, 7, 9])
+        cards_in_hand['many'] = fuzz.trapmf(cards_in_hand.universe, [8, 10, 12, 12])
         
-        self.round_num['first'] = fuzz.trimf(self.round_num.universe, [1, 1, 1])
-        self.round_num['second'] = fuzz.trimf(self.round_num.universe, [2, 2, 2])
-        self.round_num['final'] = fuzz.trimf(self.round_num.universe, [3, 3, 3])
+        # 3. Round Number (game phase)
+        # Range: 1 to 3
+        round_num = ctrl.Antecedent(np.arange(1, 4, 1), 'round_num')
+        round_num['early'] = fuzz.trimf(round_num.universe, [1, 1, 2])
+        round_num['mid'] = fuzz.trimf(round_num.universe, [1, 2, 3])
+        round_num['late'] = fuzz.trimf(round_num.universe, [2, 3, 3])
         
-        self.opp_passed['not_passed'] = fuzz.trimf(self.opp_passed.universe, [0, 0, 0])
-        self.opp_passed['passed'] = fuzz.trimf(self.opp_passed.universe, [1, 1, 1])
+        # 4. Rounds Won Difference (strategic position)
+        # Range: -2 to 2
+        rounds_diff = ctrl.Antecedent(np.arange(-2, 3, 1), 'rounds_diff')
+        rounds_diff['behind'] = fuzz.trimf(rounds_diff.universe, [-2, -1, 0])
+        rounds_diff['tied'] = fuzz.trimf(rounds_diff.universe, [-1, 0, 1])
+        rounds_diff['ahead'] = fuzz.trimf(rounds_diff.universe, [0, 1, 2])
         
-        self.opp_threat['low_threat'] = fuzz.trimf(self.opp_threat.universe, [0, 0, 4])
-        self.opp_threat['medium_threat'] = fuzz.trimf(self.opp_threat.universe, [3, 5, 7])
-        self.opp_threat['high_threat'] = fuzz.trimf(self.opp_threat.universe, [6, 10, 10])
+        # 5. Opponent Cards (opponent's resource state)
+        # Range: 0 to 12
+        opp_cards = ctrl.Antecedent(np.arange(0, 13, 1), 'opp_cards')
+        opp_cards['very_few'] = fuzz.trapmf(opp_cards.universe, [0, 0, 1, 3])
+        opp_cards['few'] = fuzz.trimf(opp_cards.universe, [2, 4, 6])
+        opp_cards['moderate'] = fuzz.trimf(opp_cards.universe, [5, 7, 9])
+        opp_cards['many'] = fuzz.trapmf(opp_cards.universe, [8, 10, 12, 12])
         
-        self.action_priority['very_low'] = fuzz.trimf(self.action_priority.universe, [0, 0, 25])
-        self.action_priority['low'] = fuzz.trimf(self.action_priority.universe, [15, 30, 45])
-        self.action_priority['medium'] = fuzz.trimf(self.action_priority.universe, [35, 50, 65])
-        self.action_priority['high'] = fuzz.trimf(self.action_priority.universe, [55, 70, 85])
-        self.action_priority['very_high'] = fuzz.trimf(self.action_priority.universe, [75, 100, 100])
+        # ==================== OUTPUT VARIABLE ====================
         
-        self.rules = self._create_rules()
-        self.control_system = ctrl.ControlSystem(self.rules)
-        self.simulation = ctrl.ControlSystemSimulation(self.control_system)
-    
-    def _create_rules(self):
+        # Aggression Level (how aggressively to play)
+        # Range: 0 to 100
+        # 0-20: Very Defensive (pass or minimal play)
+        # 20-40: Defensive (play low cards, conserve)
+        # 40-60: Balanced (moderate play)
+        # 60-80: Aggressive (play strong cards)
+        # 80-100: Very Aggressive (play strongest cards, use specials)
+        aggression = ctrl.Consequent(np.arange(0, 101, 1), 'aggression')
+        aggression['very_defensive'] = fuzz.trapmf(aggression.universe, [0, 0, 10, 25])
+        aggression['defensive'] = fuzz.trimf(aggression.universe, [15, 30, 45])
+        aggression['balanced'] = fuzz.trimf(aggression.universe, [35, 50, 65])
+        aggression['aggressive'] = fuzz.trimf(aggression.universe, [55, 70, 85])
+        aggression['very_aggressive'] = fuzz.trapmf(aggression.universe, [75, 90, 100, 100])
+        
+        # ==================== FUZZY RULES ====================
+        
         rules = []
         
-        rules.append(ctrl.Rule(self.strength_diff['losing_big'] & self.round_num['final'], self.action_priority['very_high']))
-        rules.append(ctrl.Rule(self.strength_diff['losing_small'] & self.round_num['final'], self.action_priority['high']))
-        rules.append(ctrl.Rule(self.strength_diff['winning_big'] & self.opp_passed['passed'], self.action_priority['very_low']))
-        rules.append(ctrl.Rule(self.strength_diff['winning_small'] & self.opp_passed['passed'], self.action_priority['low']))
-        rules.append(ctrl.Rule(self.cards_in_hand['few'] & self.round_num['first'], self.action_priority['medium']))
-        rules.append(ctrl.Rule(self.cards_in_hand['many'] & self.round_num['first'], self.action_priority['low']))
-        rules.append(ctrl.Rule(self.opp_threat['high_threat'] & self.round_num['final'], self.action_priority['very_high']))
-        rules.append(ctrl.Rule(self.opp_threat['low_threat'] & self.strength_diff['winning_big'], self.action_priority['low']))
+        # --- EARLY GAME RULES ---
+        # Rule 1: Early game + many cards + tied rounds -> Balanced play
+        rules.append(ctrl.Rule(round_num['early'] & cards_in_hand['many'] & rounds_diff['tied'],
+                               aggression['balanced']))
         
-        return rules
+        # Rule 2: Early game + winning + many cards -> Defensive (conserve resources)
+        rules.append(ctrl.Rule(round_num['early'] & strength_diff['winning'] & cards_in_hand['many'],
+                               aggression['defensive']))
+        
+        # Rule 3: Early game + losing badly -> Defensive (bait opponent to overcommit)
+        rules.append(ctrl.Rule(round_num['early'] & strength_diff['losing_badly'] & cards_in_hand['many'],
+                               aggression['very_defensive']))
+        
+        # Rule 4: Early game + few cards -> Aggressive (need to win this round)
+        rules.append(ctrl.Rule(round_num['early'] & cards_in_hand['few'],
+                               aggression['aggressive']))
+        
+        # --- MID GAME RULES ---
+        # Rule 5: Mid game + ahead in rounds + winning -> Defensive (protect lead)
+        rules.append(ctrl.Rule(round_num['mid'] & rounds_diff['ahead'] & strength_diff['winning'],
+                               aggression['very_defensive']))
+        
+        # Rule 6: Mid game + tied rounds + tied strength -> Balanced
+        rules.append(ctrl.Rule(round_num['mid'] & rounds_diff['tied'] & strength_diff['tied'],
+                               aggression['balanced']))
+        
+        # Rule 7: Mid game + behind in rounds -> Aggressive (must win)
+        rules.append(ctrl.Rule(round_num['mid'] & rounds_diff['behind'],
+                               aggression['very_aggressive']))
+        
+        # Rule 8: Mid game + winning big -> Defensive (conserve for final)
+        rules.append(ctrl.Rule(round_num['mid'] & strength_diff['winning_big'],
+                               aggression['very_defensive']))
+        
+        # --- LATE GAME RULES ---
+        # Rule 9: Late game + ahead in rounds -> Very Defensive (just pass)
+        rules.append(ctrl.Rule(round_num['late'] & rounds_diff['ahead'],
+                               aggression['very_defensive']))
+        
+        # Rule 10: Late game + behind in rounds -> Very Aggressive (all or nothing)
+        rules.append(ctrl.Rule(round_num['late'] & rounds_diff['behind'],
+                               aggression['very_aggressive']))
+        
+        # Rule 11: Late game + tied rounds + winning -> Defensive (small commitment)
+        rules.append(ctrl.Rule(round_num['late'] & rounds_diff['tied'] & strength_diff['winning'],
+                               aggression['defensive']))
+        
+        # Rule 12: Late game + tied rounds + losing -> Very Aggressive
+        rules.append(ctrl.Rule(round_num['late'] & rounds_diff['tied'] & strength_diff['losing'],
+                               aggression['very_aggressive']))
+        
+        # --- RESOURCE-BASED RULES ---
+        # Rule 13: Very few cards + losing -> Very Aggressive (desperation)
+        rules.append(ctrl.Rule(cards_in_hand['very_few'] & strength_diff['losing'],
+                               aggression['very_aggressive']))
+        
+        # Rule 14: Very few cards + winning -> Very Defensive (pass and preserve)
+        rules.append(ctrl.Rule(cards_in_hand['very_few'] & strength_diff['winning'],
+                               aggression['very_defensive']))
+        
+        # Rule 15: Many cards + opponent has very few -> Aggressive (exploit advantage)
+        rules.append(ctrl.Rule(cards_in_hand['many'] & opp_cards['very_few'],
+                               aggression['aggressive']))
+        
+        # Rule 16: Few cards + opponent has many -> Defensive (conserve)
+        rules.append(ctrl.Rule(cards_in_hand['few'] & opp_cards['many'],
+                               aggression['defensive']))
+        
+        # --- STRATEGIC RULES ---
+        # Rule 17: Winning big + opponent has few cards -> Very Defensive (they're desperate)
+        rules.append(ctrl.Rule(strength_diff['winning_big'] & opp_cards['very_few'],
+                               aggression['very_defensive']))
+        
+        # Rule 18: Losing badly + many cards -> Aggressive (fight back)
+        rules.append(ctrl.Rule(strength_diff['losing_badly'] & cards_in_hand['moderate'],
+                               aggression['aggressive']))
+        
+        # Rule 19: Tied strength + moderate cards + mid game -> Balanced
+        rules.append(ctrl.Rule(strength_diff['tied'] & cards_in_hand['moderate'] & round_num['mid'],
+                               aggression['balanced']))
+        
+        # Rule 20: Ahead in rounds + early game -> Defensive (already have advantage)
+        rules.append(ctrl.Rule(rounds_diff['ahead'] & round_num['early'],
+                               aggression['defensive']))
+        
+        # Rule 21: Behind in rounds + early game + many cards -> Aggressive
+        rules.append(ctrl.Rule(rounds_diff['behind'] & round_num['early'] & cards_in_hand['many'],
+                               aggression['aggressive']))
+        
+        # Rule 22: Tied everything -> Balanced
+        rules.append(ctrl.Rule(strength_diff['tied'] & rounds_diff['tied'] & cards_in_hand['moderate'],
+                               aggression['balanced']))
+        
+        # Rule 23: Late game + tied + very few cards -> Very Aggressive (last chance)
+        rules.append(ctrl.Rule(round_num['late'] & rounds_diff['tied'] & cards_in_hand['very_few'],
+                               aggression['very_aggressive']))
+        
+        # Rule 24: Moderate cards + losing -> Aggressive
+        rules.append(ctrl.Rule(cards_in_hand['moderate'] & strength_diff['losing'],
+                               aggression['aggressive']))
+        
+        # Rule 25: Many cards + losing + early -> Balanced (have resources to recover)
+        rules.append(ctrl.Rule(cards_in_hand['many'] & strength_diff['losing'] & round_num['early'],
+                               aggression['balanced']))
+        
+        # Create control system
+        control_system = ctrl.ControlSystem(rules)
+        return ctrl.ControlSystemSimulation(control_system)
     
     def decide_action(self, game_state, valid_actions):
-        current_player = game_state.player()
-        opponent_player = game_state.opponent()
-        
-        my_strength = self.calculate_board_strength(current_player.board)
-        opp_strength = self.calculate_board_strength(opponent_player.board)
-        strength_diff = my_strength - opp_strength
-        
-        cards_count = len(current_player.hand)
-        round_number = game_state.round_number
-        opponent_passed = 1 if opponent_player.passed else 0
-        
-        opp_hand = opponent_player.hand
-        if opp_hand:
-            unit_cards = [c for c in opp_hand if c.card_type in [0, 1, 2]]
-            opp_strongest = max([c.strength for c in unit_cards]) if unit_cards else 0
-        else:
-            opp_strongest = 0
-        
-        action_scores = {}
-        
-        for action in valid_actions:
-            try:
-                self.simulation.input['strength_diff'] = max(-50, min(50, strength_diff))
-                self.simulation.input['cards_in_hand'] = max(0, min(12, cards_count))
-                self.simulation.input['round_num'] = round_number
-                self.simulation.input['opp_passed'] = opponent_passed
-                self.simulation.input['opp_threat'] = max(0, min(10, opp_strongest))
-                
-                self.simulation.compute()
-                score = self.simulation.output['action_priority']
-                
-                if action.type == Action.PASS:
-                    if opponent_passed == 1 and strength_diff > 0:
-                        score *= 1.5
-                    elif strength_diff < -10 and round_number < 3:
-                        score *= 0.3
-                    # Penalty for passing when no cards are on board
-                    elif my_strength == 0:
-                        score *= 0.1  # Very low score for passing without playing anything
-                
-                elif action.type == Action.PLAY_SPECIAL:
-                    # Special cards are only valuable if there are cards on the board
-                    total_board_cards = len([c for row in ['melee', 'ranged', 'siege'] 
-                                           for c in current_player.board.get(row, []) + opponent_player.board.get(row, [])])
-                    
-                    if total_board_cards == 0:
-                        # No cards on board - special cards are useless
-                        score *= 0.1
-                    else:
-                        # Cards on board - special cards can be valuable
-                        if action.card.card_type == -2:  # Scorch
-                            # Check if there are high-value targets
-                            all_strengths = [c.get_current_strength() for row in ['melee', 'ranged', 'siege']
-                                           for c in current_player.board.get(row, []) + opponent_player.board.get(row, [])]
-                            if all_strengths and max(all_strengths) >= 7:
-                                score *= 1.3  # Good target for scorch
-                            else:
-                                score *= 0.8  # Not a great target
-                        elif action.card.card_type == -1:  # Row debuff
-                            # Check if target row has cards
-                            target_row = action.target_row
-                            if target_row:
-                                row_cards = opponent_player.board.get(target_row, [])
-                                if len(row_cards) >= 2:
-                                    score *= 1.2  # Good target for debuff
-                                else:
-                                    score *= 0.7  # Not many cards to debuff
-                
-                elif action.type == Action.PLAY_UNIT:
-                    # Playing unit cards is generally good, especially early
-                    if round_number == 1 and cards_count > 8:
-                        score *= 1.1  # Slight boost for playing units early
-                
-                action_scores[action] = score
-            except Exception as e:
-                action_scores[action] = 50
-                print(f"Error occurred while scoring action {action}: {e}")
-
-        if not action_scores:
+        """
+        Decide which action to take using the Fuzzy Inference System.
+        """
+        if len(valid_actions) == 1:
             return valid_actions[0]
         
-        return max(action_scores, key=action_scores.get)
+        # Calculate input variables
+        my_state = game_state.players[self.player_id]
+        opp_state = game_state.players[1 - self.player_id]
+        
+        my_strength = my_state.get_board_strength()
+        opp_strength = opp_state.get_board_strength()
+        strength_difference = my_strength - opp_strength
+        
+        my_cards = len(my_state.hand)
+        opponent_cards = len(opp_state.hand)
+        
+        rounds_won_diff = my_state.rounds_won - opp_state.rounds_won
+        
+        # Set fuzzy inputs
+        self.fuzzy_system.input['strength_diff'] = max(-100, min(100, strength_difference))
+        self.fuzzy_system.input['cards_in_hand'] = my_cards
+        self.fuzzy_system.input['round_num'] = game_state.round_number
+        self.fuzzy_system.input['rounds_diff'] = rounds_won_diff
+        self.fuzzy_system.input['opp_cards'] = opponent_cards
+        
+        # Compute fuzzy output
+        try:
+            self.fuzzy_system.compute()
+            aggression_level = self.fuzzy_system.output['aggression']
+        except Exception:
+            # If fuzzy system fails (no rules fired), default to balanced
+            aggression_level = 50
+        
+        # Select action based on aggression level
+        action = self._select_action_by_aggression(game_state, valid_actions, aggression_level)
+        
+        return action
+    
+    def _select_action_by_aggression(self, game_state, valid_actions, aggression_level):
+        """
+        Select an action based on the computed aggression level.
+        
+        Aggression ranges:
+        - 0-20: Very Defensive (pass if winning, play lowest card if losing)
+        - 20-40: Defensive (play low-medium cards, avoid specials)
+        - 40-60: Balanced (play medium cards, consider all options)
+        - 60-80: Aggressive (play high cards, consider row debuff)
+        - 80-100: Very Aggressive (play highest cards, use scorch)
+        """
+        my_state = game_state.players[self.player_id]
+        opp_state = game_state.players[1 - self.player_id]
+        
+        my_strength = my_state.get_board_strength()
+        opp_strength = opp_state.get_board_strength()
+        
+        # Separate actions by type
+        unit_actions = [a for a in valid_actions if a.type == Action.PLAY_UNIT]
+        special_actions = [a for a in valid_actions if a.type == Action.PLAY_SPECIAL]
+        pass_action = [a for a in valid_actions if a.type == Action.PASS]
+        
+        # VERY DEFENSIVE (0-20): Pass if ahead, minimal play if behind
+        if aggression_level < 20:
+            if my_strength >= opp_strength and len(my_state.hand) > 0:
+                return pass_action[0] if pass_action else valid_actions[0]
+            elif unit_actions:
+                # Play the weakest card
+                weakest = min(unit_actions, key=lambda a: a.card.strength)
+                return weakest
+            return pass_action[0] if pass_action else valid_actions[0]
+        
+        # DEFENSIVE (20-40): Play low-medium cards, conserve resources
+        elif aggression_level < 40:
+            if unit_actions:
+                # Play cards in the lower 40% of strength
+                sorted_units = sorted(unit_actions, key=lambda a: a.card.strength)
+                defensive_cards = sorted_units[:max(1, len(sorted_units) * 2 // 5)]
+                return random.choice(defensive_cards)
+            return pass_action[0] if pass_action else valid_actions[0]
+        
+        # BALANCED (40-60): Play medium cards, balanced strategy
+        elif aggression_level < 60:
+            if unit_actions:
+                # Play cards in the middle 40% of strength
+                sorted_units = sorted(unit_actions, key=lambda a: a.card.strength)
+                mid_start = len(sorted_units) * 3 // 10
+                mid_end = len(sorted_units) * 7 // 10
+                if mid_end > mid_start:
+                    balanced_cards = sorted_units[mid_start:mid_end]
+                    return random.choice(balanced_cards)
+                return random.choice(unit_actions)
+            return pass_action[0] if pass_action else valid_actions[0]
+        
+        # AGGRESSIVE (60-80): Play high cards, consider row debuff
+        elif aggression_level < 80:
+            # Consider row debuff if opponent has strong cards in a row
+            row_debuff_actions = [a for a in special_actions if a.card.card_type == -1]
+            if row_debuff_actions:
+                # Find opponent's strongest row
+                best_row = None
+                best_impact = 0
+                for row in ['melee', 'ranged', 'siege']:
+                    row_strength = sum(c.get_current_strength() for c in opp_state.board[row])
+                    if row_strength > best_impact and row_strength > 10:
+                        best_impact = row_strength
+                        best_row = row
+                
+                if best_row and best_impact > 15:
+                    # Use row debuff on strongest row
+                    for action in row_debuff_actions:
+                        if action.target_row == best_row:
+                            return action
+            
+            # Otherwise play high-strength cards
+            if unit_actions:
+                sorted_units = sorted(unit_actions, key=lambda a: a.card.strength, reverse=True)
+                # Top 40% of cards
+                aggressive_cards = sorted_units[:max(1, len(sorted_units) * 2 // 5)]
+                return random.choice(aggressive_cards)
+            
+            return pass_action[0] if pass_action else valid_actions[0]
+        
+        # VERY AGGRESSIVE (80-100): Play strongest cards, use scorch
+        else:
+            # Consider scorch if it benefits us
+            scorch_actions = [a for a in special_actions if a.card.card_type == -2]
+            if scorch_actions:
+                # Check if scorch would help
+                all_cards = []
+                for row in ['melee', 'ranged', 'siege']:
+                    all_cards.extend([(c, self.player_id) for c in my_state.board[row]])
+                    all_cards.extend([(c, 1 - self.player_id) for c in opp_state.board[row]])
+                
+                if all_cards:
+                    max_strength = max(c.get_current_strength() for c, _ in all_cards)
+                    my_max_count = sum(1 for c, pid in all_cards 
+                                      if pid == self.player_id and c.get_current_strength() == max_strength)
+                    opp_max_count = sum(1 for c, pid in all_cards 
+                                       if pid != self.player_id and c.get_current_strength() == max_strength)
+                    
+                    # Use scorch if opponent loses more value
+                    if opp_max_count > my_max_count and max_strength >= 5:
+                        return scorch_actions[0]
+            
+            # Play the strongest unit card
+            if unit_actions:
+                strongest = max(unit_actions, key=lambda a: a.card.strength)
+                return strongest
+            
+            # If only special actions remain, use them
+            if special_actions:
+                return random.choice(special_actions)
+            
+            return pass_action[0] if pass_action else valid_actions[0]

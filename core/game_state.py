@@ -13,7 +13,6 @@ class GameState:
             0: PlayerState(0),
             1: PlayerState(1)
         }
-        self.special_cards_used = {-1: 0, -2: 0}
         self.game_over = False
         self.winner = None
         self.round_scores = []  # List of (p0_score, p1_score) tuples for each round
@@ -82,12 +81,26 @@ class GameState:
             elif self.players[1].rounds_won > self.players[0].rounds_won:
                 self.winner = 1
             else:
-                self.winner = None
+                # Tiebreaker: player with more cards in hand wins
+                p0_cards = len(self.players[0].hand)
+                p1_cards = len(self.players[1].hand)
+                if p0_cards > p1_cards:
+                    self.winner = 0
+                elif p1_cards > p0_cards:
+                    self.winner = 1
+                else:
+                    self.winner = None  # Still a draw if equal cards
         else:
             self.round_number += 1
             self.players[0].reset_round()
             self.players[1].reset_round()
-            self.current_player = 0
+            self.current_player = (self.round_number - 1) % 2
+            
+            # Auto-pass players with no cards at start of new round
+            if len(self.players[0].hand) == 0:
+                self.players[0].passed = True
+            if len(self.players[1].hand) == 0:
+                self.players[1].passed = True
     
     def __repr__(self):
         return f"GameState(round={self.round_number}, current_player={self.current_player}, scores={self.players[0].rounds_won}-{self.players[1].rounds_won})"

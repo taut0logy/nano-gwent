@@ -25,8 +25,6 @@ class GameEngine:
                     self._apply_scorch()
                 elif action.card.card_type == -1:
                     self._apply_row_debuff(action.target_row)
-                
-                self.game_state.special_cards_used[action.card.card_type] += 1
         
         if self.game_state.check_round_end():
             self.game_state.resolve_round()
@@ -101,11 +99,10 @@ class GameEngine:
                 actions.append(Action(Action.PLAY_UNIT, card, row_name))
             
             elif card.card_type in [-1, -2]:
-                if self.game_state.special_cards_used[card.card_type] < 2:
-                    if card.card_type == -2:
-                        actions.append(Action(Action.PLAY_SPECIAL, card, None))
-                    elif card.card_type == -1:
-                        for row in ['melee', 'ranged', 'siege']:
-                            actions.append(Action(Action.PLAY_SPECIAL, card, row))
+                if card.card_type == -2:
+                    actions.append(Action(Action.PLAY_SPECIAL, card, None))
+                elif card.card_type == -1:
+                    for row in ['melee', 'ranged', 'siege']:
+                        actions.append(Action(Action.PLAY_SPECIAL, card, row))
         
         return actions

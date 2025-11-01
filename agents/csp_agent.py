@@ -1,171 +1,345 @@
-import math
 from agents.base_agent import BaseAgent
 from core.action import Action
+from core.game_engine import GameEngine
+import random
 
 class CSPAgent(BaseAgent):
+    """
+    Constraint Satisfaction Problem (CSP) Agent for Nano Gwent.
+    
+    The CSP formulation:
+    - Variables: Available actions (cards to play or pass)
+    - Domain: Valid actions from game state
+    - Constraints: Game rules + strategic constraints
+    - Objective: Maximize utility while satisfying constraints
+    
+    Approach: Constraint-based optimization with heuristic evaluation
+    """
+    
     def __init__(self, player_id):
         super().__init__(player_id)
+        self.action_history = []
     
     def decide_action(self, game_state, valid_actions):
-        if not valid_actions:
-            return Action(Action.PASS)
+        """
+        Use CSP-based reasoning to select the best action.
+        """
+        if len(valid_actions) == 1:
+            return valid_actions[0]
         
-        feasible_actions = [a for a in valid_actions if self._satisfies_constraints(a, game_state)]
+        # Get game context
+        my_state = game_state.players[self.player_id]
+        opp_state = game_state.players[1 - self.player_id]
+        
+        # Filter actions by hard constraints
+        feasible_actions = self._apply_hard_constraints(
+            game_state, valid_actions, my_state, opp_state
+        )
         
         if not feasible_actions:
-            return Action(Action.PASS)
+            # If no actions satisfy hard constraints, relax and use all valid actions
+            feasible_actions = valid_actions
         
-        best_action = None
-        best_utility = -float('inf')
-        
+        # Evaluate each feasible action with soft constraints (utility function)
+        action_scores = []
         for action in feasible_actions:
-            utility = self._calculate_utility(action, game_state)
-            if utility > best_utility:
-                best_utility = utility
-                best_action = action
+            score = self._evaluate_action(game_state, action, my_state, opp_state)
+            action_scores.append((action, score))
         
-        return best_action if best_action else feasible_actions[0]
+        # Sort by score and select best action
+        action_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return best action
+        best_action = action_scores[0][0]
+        self.action_history.append(best_action)
+        
+        return best_action
     
-    def _satisfies_constraints(self, action, game_state):
-        current_player = game_state.player()
-        opponent_player = game_state.opponent()
+    def _apply_hard_constraints(self, game_state, valid_actions, my_state, opp_state):
+        """
+        Apply hard constraints to filter out invalid/suboptimal actions.
+        Hard constraints are rules that must be satisfied.
+        """
+        feasible = []
         
-        if action.type in [Action.PLAY_UNIT, Action.PLAY_SPECIAL]:
-            if action.card not in current_player.hand:
-                return False
+        my_strength = my_state.get_board_strength()
+        opp_strength = opp_state.get_board_strength()
+        my_cards = len(my_state.hand)
+        rounds_won_diff = my_state.rounds_won - opp_state.rounds_won
         
-        if action.type == Action.PLAY_SPECIAL:
-            if game_state.special_cards_used[action.card.card_type] >= 2:
-                return False
-        
-        if current_player.passed and action.type != Action.PASS:
-            return False
-        
-        if game_state.round_number < 3:
-            cards_after = len(current_player.hand) - (1 if action.type != Action.PASS else 0)
-            my_strength = self.calculate_board_strength(current_player.board)
-            opp_strength = self.calculate_board_strength(opponent_player.board)
-            strength_diff = my_strength - opp_strength
-            winning_big = strength_diff > 15
+        for action in valid_actions:
+            # Constraint 1: Don't pass if we're losing and can still play cards
+            if action.type == Action.PASS:
+                # Allow passing if:
+                # - We're winning
+                # - We have no cards
+                # - Opponent has passed and we're tied/winning
+                # - We're ahead in rounds and in a good position
+                if my_strength > opp_strength:
+                    feasible.append(action)
+                elif my_cards == 0:
+                    feasible.append(action)
+                elif opp_state.passed and my_strength >= opp_strength:
+                    feasible.append(action)
+                elif rounds_won_diff > 0 and game_state.round_number >= 2:
+                    feasible.append(action)
+                # Skip pass if losing and have cards (hard constraint)
+                continue
             
-            if not winning_big and cards_after < 1:
-                return False
-        
-        if game_state.round_number < 3:
-            cards_after = len(current_player.hand) - (1 if action.type != Action.PASS else 0)
-            rounds_remaining = 3 - game_state.round_number
+            # Constraint 2: Don't play weak cards when losing badly (unless desperate)
+            if action.type == Action.PLAY_UNIT:
+                if my_strength < opp_strength - 15 and my_cards > 3:
+                    # Losing badly - don't play weak cards (strength < 5)
+                    if action.card.strength < 5:
+                        continue  # Skip weak cards
+                
+                # Constraint 3: Don't play high-value cards early when winning big
+                if game_state.round_number == 1 and my_strength > opp_strength + 10:
+                    if action.card.strength >= 8 and my_cards >= 7:
+                        continue  # Save high cards
             
-            if cards_after < rounds_remaining:
-                return False
+            # Constraint 4: Special card usage constraints
+            if action.type == Action.PLAY_SPECIAL:
+                if action.card.card_type == -1:  # Row Debuff
+                    # Only use if target row has significant strength
+                    target_row_strength = sum(c.get_current_strength() 
+                                             for c in opp_state.board[action.target_row])
+                    if target_row_strength < 8:
+                        continue  # Don't waste on weak rows
+                    
+                    # Don't debuff if it hurts us more than opponent
+                    my_row_strength = sum(c.get_current_strength() 
+                                         for c in my_state.board[action.target_row])
+                    if my_row_strength > target_row_strength:
+                        continue  # Would hurt us more
+                
+                elif action.card.card_type == -2:  # Scorch
+                    # Only use scorch if it helps us
+                    all_cards = []
+                    for row in ['melee', 'ranged', 'siege']:
+                        all_cards.extend([(c, self.player_id) for c in my_state.board[row]])
+                        all_cards.extend([(c, 1 - self.player_id) for c in opp_state.board[row]])
+                    
+                    if all_cards:
+                        max_strength = max(c.get_current_strength() for c, _ in all_cards)
+                        my_loss = sum(c.get_current_strength() for c, pid in all_cards 
+                                     if pid == self.player_id and c.get_current_strength() == max_strength)
+                        opp_loss = sum(c.get_current_strength() for c, pid in all_cards 
+                                      if pid != self.player_id and c.get_current_strength() == max_strength)
+                        
+                        # Only use if opponent loses more or equal value
+                        if my_loss > opp_loss:
+                            continue  # Don't use scorch if we lose more
+                        if opp_loss == 0:
+                            continue  # No effect
+            
+            # Action satisfies all hard constraints
+            feasible.append(action)
         
-        return True
+        return feasible if feasible else valid_actions
     
-    def _calculate_utility(self, action, game_state):
-        current_player = game_state.player()
-        opponent_player = game_state.opponent()
+    def _evaluate_action(self, game_state, action, my_state, opp_state):
+        """
+        Evaluate an action using a utility function with soft constraints.
+        Higher score = better action.
+        """
+        score = 0.0
+        
+        # Get current state information
+        my_strength = my_state.get_board_strength()
+        opp_strength = opp_state.get_board_strength()
+        my_cards = len(my_state.hand)
+        opp_cards = len(opp_state.hand)
+        rounds_won_diff = my_state.rounds_won - opp_state.rounds_won
+        strength_diff = my_strength - opp_strength
         round_num = game_state.round_number
         
-        weights = self._get_weights(round_num)
+        # Simulate action to get resulting state
+        sim_state = game_state.clone()
+        sim_engine = GameEngine(sim_state)
+        sim_engine.execute_action(action)
         
-        simulated_state = game_state.clone()
-        sim_player = simulated_state.player()
+        sim_my_state = sim_state.players[self.player_id]
+        sim_opp_state = sim_state.players[1 - self.player_id]
+        sim_my_strength = sim_my_state.get_board_strength()
+        sim_opp_strength = sim_opp_state.get_board_strength()
+        sim_strength_diff = sim_my_strength - sim_opp_strength
         
-        my_strength_before = self.calculate_board_strength(current_player.board)
-        opp_strength_before = self.calculate_board_strength(opponent_player.board)
+        # === OBJECTIVE 1: Maximize strength difference ===
+        strength_improvement = sim_strength_diff - strength_diff
+        score += strength_improvement * 10
         
-        if action.type == Action.PLAY_UNIT and action.card in sim_player.hand:
-            sim_player.hand.remove(action.card)
-            row_name = {0: "melee", 1: "ranged", 2: "siege"}[action.card.card_type]
-            sim_player.board[row_name].append(action.card)
+        # === OBJECTIVE 2: Win the round with minimum investment ===
+        if sim_strength_diff > 0:
+            # Winning - bonus for being ahead
+            score += 100
+            
+            # Prefer minimal lead (save cards for later)
+            if sim_strength_diff <= 5:
+                score += 50  # Optimal lead
+            elif sim_strength_diff > 15:
+                score -= 30  # Overcommitting
         
-        my_strength_after = self.calculate_board_strength(sim_player.board)
-        opp_strength_after = self.calculate_board_strength(simulated_state.opponent().board)
+        # === OBJECTIVE 3: Resource efficiency ===
+        if action.type == Action.PLAY_UNIT:
+            # Efficiency: strength gained per card played
+            efficiency = action.card.strength / max(1, my_cards)
+            score += efficiency * 5
+            
+            # Bonus for appropriate strength cards based on situation
+            if strength_diff < -10:
+                # Losing - prefer high-strength cards
+                if action.card.strength >= 7:
+                    score += 40
+            elif strength_diff > 10:
+                # Winning - prefer low-strength cards
+                if action.card.strength <= 5:
+                    score += 30
+            else:
+                # Tied - prefer medium-strength cards
+                if 4 <= action.card.strength <= 7:
+                    score += 25
         
-        strength_adv = (my_strength_after - opp_strength_after) - (my_strength_before - opp_strength_before)
+        # === OBJECTIVE 4: Round-specific strategies ===
+        if round_num == 1:
+            # Early round - conservative play
+            if action.type == Action.PASS and strength_diff > 3:
+                score += 200  # Pass early when winning
+            if action.type == Action.PLAY_UNIT and action.card.strength >= 8:
+                score -= 50  # Penalty for high cards early
         
-        cards_remaining = len(sim_player.hand)
-        round_importance = [0.5, 0.7, 1.0][round_num - 1]
-        card_efficiency = (cards_remaining / 10.0) * round_importance
+        elif round_num == 2:
+            # Mid round - balanced play
+            if rounds_won_diff > 0:
+                # Already won a round - can be conservative
+                if action.type == Action.PASS and strength_diff >= 0:
+                    score += 150
+            elif rounds_won_diff < 0:
+                # Lost first round - must win this
+                if action.type == Action.PLAY_UNIT and action.card.strength >= 6:
+                    score += 60
         
-        special_value = 0
+        elif round_num == 3:
+            # Final round - decisive play
+            if rounds_won_diff > 0:
+                # Already winning - just need to not lose
+                if action.type == Action.PASS:
+                    score += 300
+            elif rounds_won_diff < 0:
+                # Must win - all in
+                if action.type == Action.PLAY_UNIT:
+                    score += action.card.strength * 15
+            else:
+                # Tied - must win this round
+                if action.type == Action.PLAY_UNIT:
+                    score += action.card.strength * 12
+        
+        # === OBJECTIVE 5: Special card value ===
         if action.type == Action.PLAY_SPECIAL:
-            if action.card.card_type == -2:
+            if action.card.card_type == -1:  # Row Debuff
+                # Calculate impact
+                target_row = action.target_row
+                opp_row_cards = opp_state.board[target_row]
+                my_row_cards = my_state.board[target_row]
+                
+                opp_loss = sum(c.get_current_strength() - 1 
+                              for c in opp_row_cards if c.get_current_strength() > 1)
+                my_loss = sum(c.get_current_strength() - 1 
+                             for c in my_row_cards if c.get_current_strength() > 1)
+                
+                net_gain = opp_loss - my_loss
+                score += net_gain * 15
+                
+                # Bonus for good timing
+                if opp_cards < my_cards and net_gain > 10:
+                    score += 100  # Opponent can't recover easily
+            
+            elif action.card.card_type == -2:  # Scorch
+                # Calculate scorch value
                 all_cards = []
                 for row in ['melee', 'ranged', 'siege']:
-                    all_cards.extend(current_player.board.get(row, []))
-                    all_cards.extend(opponent_player.board.get(row, []))
+                    all_cards.extend([(c, self.player_id) for c in my_state.board[row]])
+                    all_cards.extend([(c, 1 - self.player_id) for c in opp_state.board[row]])
                 
                 if all_cards:
-                    highest_strength = max([c.get_current_strength() for c in all_cards])
-                    special_value = highest_strength * 2
-            
-            elif action.card.card_type == -1:
-                my_cards = current_player.board.get(action.target_row, [])
-                opp_cards = opponent_player.board.get(action.target_row, [])
-                opp_loss = sum([c.get_current_strength() - 1 for c in opp_cards])
-                my_loss = sum([c.get_current_strength() - 1 for c in my_cards])
-                special_value = max(0, opp_loss - my_loss)
+                    max_strength = max(c.get_current_strength() for c, _ in all_cards)
+                    my_loss = sum(c.get_current_strength() for c, pid in all_cards 
+                                 if pid == self.player_id and c.get_current_strength() == max_strength)
+                    opp_loss = sum(c.get_current_strength() for c, pid in all_cards 
+                                  if pid != self.player_id and c.get_current_strength() == max_strength)
+                    
+                    net_gain = opp_loss - my_loss
+                    score += net_gain * 20
+                    
+                    # Bonus for high-value scorches
+                    if opp_loss >= 10 and my_loss == 0:
+                        score += 150
         
-        risk_penalty = 0
-        if action.type == Action.PLAY_UNIT:
-            exposure_factor = 1.0 if not opponent_player.passed else 0.5
-            if round_num == 3:
-                exposure_factor = 0.0
-            risk_penalty = action.card.strength * exposure_factor * (1 - round_num / 3)
+        # === OBJECTIVE 6: Opponent modeling ===
+        if opp_state.passed:
+            # Opponent passed - be conservative
+            if action.type == Action.PASS and sim_strength_diff >= 0:
+                score += 250  # Match their pass if winning
+            elif action.type == Action.PLAY_UNIT:
+                # Play minimal card to win
+                if sim_strength_diff > 0 and sim_strength_diff <= 5:
+                    score += 100
         
-        win_prob = (1 / (1 + math.exp(-(my_strength_after - opp_strength_after) / 10))) * 100
+        # === OBJECTIVE 7: Card advantage ===
+        card_advantage = my_cards - opp_cards
+        if card_advantage > 2:
+            # We have more cards - can afford to invest
+            score += 20
+        elif card_advantage < -2:
+            # Opponent has more cards - be conservative
+            if action.type == Action.PASS and strength_diff >= 0:
+                score += 50
         
-        opponent_hand_threat = self._evaluate_opponent_threat(opponent_player.hand, round_num)
-        
-        # Add pass penalty - passing should be costly, especially early in rounds
-        pass_penalty = 0
-        if action.type == Action.PASS:
-            # Strong penalty for passing when you haven't played any cards
-            if my_strength_after == 0:
-                pass_penalty = 200  # Very high penalty for passing without playing anything
-            # Penalty based on how early in the round it is (more cards = earlier in round)
-            elif cards_remaining > 8:
-                pass_penalty = 100  # High penalty for passing early
-            elif cards_remaining > 5:
-                pass_penalty = 50   # Medium penalty for passing mid-round
+        # === OBJECTIVE 8: Tiebreaker consideration ===
+        if round_num == 3 and rounds_won_diff == 0:
+            # Final round, tied - card count matters
+            if my_cards > opp_cards:
+                # We'd win tiebreaker - can pass if tied
+                if action.type == Action.PASS and strength_diff == 0:
+                    score += 200
             else:
-                pass_penalty = 20   # Small penalty for passing late in round
-            
-            # Reduce penalty if opponent has passed (then passing makes sense)
-            if opponent_player.passed:
-                pass_penalty = 0
+                # They'd win tiebreaker - must win this round
+                if action.type == Action.PLAY_UNIT:
+                    score += 50
         
-        utility = (weights['alpha1'] * strength_adv +
-                   weights['alpha2'] * card_efficiency +
-                   weights['alpha3'] * special_value -
-                   weights['alpha4'] * risk_penalty +
-                   weights['alpha5'] * win_prob +
-                   weights['alpha6'] * opponent_hand_threat -
-                   pass_penalty)  # Subtract pass penalty
+        # === OBJECTIVE 9: Avoid desperation plays ===
+        if my_cards <= 2 and round_num <= 2:
+            # Low on cards early - penalty for playing
+            if action.type == Action.PLAY_UNIT:
+                score -= 40
         
-        return utility
+        # === OBJECTIVE 10: Random tiebreaking ===
+        # Add small random noise to break ties
+        score += random.uniform(-1, 1)
+        
+        return score
     
-    def _get_weights(self, round_num):
-        weight_sets = {
-            1: {'alpha1': 10, 'alpha2': 5, 'alpha3': 20, 'alpha4': 5, 'alpha5': 8, 'alpha6': 3},
-            2: {'alpha1': 15, 'alpha2': 3, 'alpha3': 25, 'alpha4': 2, 'alpha5': 12, 'alpha6': 6},
-            3: {'alpha1': 25, 'alpha2': 1, 'alpha3': 30, 'alpha4': 0, 'alpha5': 20, 'alpha6': 10}
-        }
-        return weight_sets.get(round_num, weight_sets[1])
+    def _calculate_strength_after_action(self, game_state, action, player_id):
+        """
+        Calculate board strength after applying an action.
+        Helper method for lookahead.
+        """
+        sim_state = game_state.clone()
+        sim_engine = GameEngine(sim_state)
+        sim_engine.execute_action(action)
+        return sim_state.players[player_id].get_board_strength()
     
-    def _evaluate_opponent_threat(self, opponent_hand, round_num):
-        if not opponent_hand:
-            return 0
-        
-        unit_cards = [c for c in opponent_hand if c.card_type in [0, 1, 2]]
-        total_strength = sum([c.strength for c in unit_cards]) if unit_cards else 0
-        
-        scorch_count = sum([1 for c in opponent_hand if c.card_type == -2])
-        debuff_count = sum([1 for c in opponent_hand if c.card_type == -1])
-        
-        strength_threat = total_strength / 10.0
-        special_threat = (scorch_count * 3 + debuff_count * 2)
-        
-        round_multiplier = [1.0, 1.5, 2.0][round_num - 1]
-        
-        return (strength_threat + special_threat) * round_multiplier
+    def _get_card_value_tier(self, strength):
+        """
+        Categorize cards by strength tier.
+        """
+        if strength <= 3:
+            return "low"
+        elif strength <= 6:
+            return "medium"
+        elif strength <= 8:
+            return "high"
+        else:
+            return "very_high"
+    
+    
