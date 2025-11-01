@@ -70,6 +70,14 @@ class GameGUI:
             print(f"Warning: Could not load row icons: {e}")
             self.row_icons = None
         
+        # Load star icon for round wins
+        try:
+            self.star_icon = pygame.image.load('assets/images/star.png')
+            self.star_icon = pygame.transform.scale(self.star_icon, (28, 28))
+        except Exception as e:
+            print(f"Warning: Could not load star icon: {e}")
+            self.star_icon = None
+        
         # Banner state tracking
         self.last_round_number = 0
         self.banner_state = None  # None, 'round_end', or 'round_start'
@@ -165,45 +173,25 @@ class GameGUI:
         self.hover_offset = (self.hover_offset + self.hover_speed) % 20
     
     def _draw_round_info(self, game_state):
-        info_bg = pygame.Surface((280, 180))
+        # Smaller info box with only round number
+        info_bg = pygame.Surface((200, 100))
         info_bg.fill((40, 30, 20))
         info_bg.set_alpha(220)
         self.screen.blit(info_bg, (20, 20))
-        pygame.draw.rect(self.screen, GOLD, (20, 20, 280, 180), 2)
+        pygame.draw.rect(self.screen, GOLD, (20, 20, 200, 100), 3)
+
+        # Title
+        title = FONT_MEDIUM.render("NANO GWENT", True, GOLD)
+        title_rect = title.get_rect(center=(120, 45))
+        self.screen.blit(title, title_rect)
         
-        title = FONT_LARGE.render("NANO GWENT", True, GOLD)
-        self.screen.blit(title, (35, 30))
-        
-        round_text = FONT_MEDIUM.render(f"Round {game_state.round_number}/3", True, WHITE)
-        self.screen.blit(round_text, (35, 70))
-        
-        score_text = FONT_MEDIUM.render(
-            f"Wins: {game_state.players[0].rounds_won} - {game_state.players[1].rounds_won}",
-            True, WHITE
-        )
-        self.screen.blit(score_text, (35, 100))
-        
-        if game_state.current_player == 0:
-            turn_color = (100, 255, 100)
-            turn_text = "Your Turn"
-        else:
-            turn_color = (255, 100, 100)
-            turn_text = "Opponent Turn"
-        
-        turn_surface = FONT_MEDIUM.render(turn_text, True, turn_color)
-        self.screen.blit(turn_surface, (35, 130))
-        
-        if game_state.players[0].passed:
-            pass_text = FONT_SMALL.render("You passed", True, GRAY)
-            self.screen.blit(pass_text, (35, 160))
-        
-        if game_state.players[1].passed:
-            pass_text = FONT_SMALL.render("Opp passed", True, GRAY)
-            self.screen.blit(pass_text, (160, 160))
+        # Emphasized round number
+        round_text = FONT_TITLE.render(f"ROUND {game_state.round_number}/3", True, WHITE)
+        round_rect = round_text.get_rect(center=(120, 85))
+        self.screen.blit(round_text, round_rect)
     
     def _draw_boards(self, game_state):
-        # Calculate row height based on board dimensions (6 rows total, 3 per player)
-        row_height = self.board_rect.height // 6  # ~88 pixels per row
+        row_height = self.board_rect.height // 6
         
         row_order_player1 = ['siege', 'ranged', 'melee']
         row_order_player0 = ['melee', 'ranged', 'siege']
@@ -222,8 +210,8 @@ class GameGUI:
         player = game_state.players[player_id]
         
         # Draw row icon using image or fallback to emoji
-        icon_x = self.board_rect.x - 60  # Position icon to the left of board
-        icon_y = y + 15  # Center vertically in the row
+        icon_x = self.board_rect.x - 20  # Position icon to the left of board
+        icon_y = y + 10  # Center vertically in the row
         
         # Draw circular background and border (larger size)
         icon_center = (icon_x + 22, icon_y + 22)  # Center of 44x44 circle
@@ -245,20 +233,17 @@ class GameGUI:
             icon_surface = FONT_LARGE.render(row_icon, True, (200, 180, 150))
             self.screen.blit(icon_surface, (icon_x + 12, icon_y + 12))
         
-        # Draw row label
-        row_label = FONT_SMALL.render(row_name.capitalize(), True, (180, 160, 130))
-        self.screen.blit(row_label, (self.board_rect.x + 15, y + 8))
         
         # Draw cards in the row
         cards = player.board[row_name]
-        card_start_x = self.board_rect.x + 110
+        card_start_x = self.board_rect.x + 60
         
         animating_cards = [anim.card for anim in self.animations if anim.active]
         
         for i, card in enumerate(cards):
             if card not in animating_cards:
                 x = card_start_x + i * (CARD_WIDTH + 5)
-                sprite = CardSprite(card, x, y + 5)
+                sprite = CardSprite(card, x, y - 12)
                 sprite.draw(self.screen)
         
         # Draw row strength indicator
@@ -283,27 +268,21 @@ class GameGUI:
         
         hand_y_p1 = 680
         hand_y_p2 = 20
-        
-        hand_bg_p1 = pygame.Surface((9000, 130))
+
+        hand_bg_p1 = pygame.Surface((900, 130))
         hand_bg_p1.fill((30, 20, 10))
         hand_bg_p1.set_alpha(180)
-        self.screen.blit(hand_bg_p1, (280, hand_y_p1 - 20))
+        self.screen.blit(hand_bg_p1, (300, hand_y_p1 - 20))
         
         hand_bg_p2 = pygame.Surface((1000, 100))
         hand_bg_p2.fill((30, 20, 10))
         hand_bg_p2.set_alpha(180)
-        self.screen.blit(hand_bg_p2, (280, hand_y_p2 - 10))
-        
-        label_p1 = FONT_MEDIUM.render("You", True, (100, 255, 100))
-        self.screen.blit(label_p1, (190, hand_y_p1 - 15))
-
-        label_p2 = FONT_MEDIUM.render("Opponent", True, (255, 100, 100))
-        self.screen.blit(label_p2, (190, hand_y_p2 - 5))
+        self.screen.blit(hand_bg_p2, (300, hand_y_p2 - 10))
         
         self.card_sprites = []
         
         for i, card in enumerate(p1_hand):
-            x = 420 + i * (CARD_WIDTH + 5)
+            x = 350 + i * (CARD_WIDTH + 5)
             y_offset = 0
             
             sprite = CardSprite(card, x, hand_y_p1 + y_offset)
@@ -320,7 +299,7 @@ class GameGUI:
             sprite.draw(self.screen)
         
         for i, card in enumerate(p2_hand):
-            x = 420 + i * (CARD_WIDTH + 5)
+            x = 350 + i * (CARD_WIDTH + 5)
             sprite = CardSprite(card, x, hand_y_p2)
             sprite.draw(self.screen)
     
@@ -328,19 +307,69 @@ class GameGUI:
         p1_strength = game_state.players[0].get_board_strength()
         p2_strength = game_state.players[1].get_board_strength()
         
-        # score_bg = pygame.Surface((200, 140))
-        # score_bg.fill((40, 30, 20))
-        # score_bg.set_alpha(220)
-        # self.screen.blit(score_bg, (20, 300))
-        # pygame.draw.rect(self.screen, GOLD, (20, 300, 200, 140), 2)
-        
+        # Player 2 score (opponent)
         p2_color = (255, 100, 100) if p2_strength > p1_strength else WHITE
-        p2_text = FONT_LARGE.render(f"Player 2: {p2_strength}", True, p2_color)
-        self.screen.blit(p2_text, (35, 285))
+        p2_text = FONT_LARGE.render(f"{p2_strength}", True, p2_color)
         
+        p2_center = (250, 255)
+        pygame.draw.circle(self.screen, p2_color, p2_center, 30, 3)
+        p2_text_rect = p2_text.get_rect(center=p2_center)
+        self.screen.blit(p2_text, p2_text_rect)
+        
+        # Player 2 label
+        p2_label = FONT_LARGE.render("Player 2", True, WHITE)
+        p2_label_rect = p2_label.get_rect(midleft=(105, 255))
+        
+        # Draw border if it's player 2's turn
+        if game_state.current_player == 1:
+            border_rect = pygame.Rect(p2_label_rect.x - 5, p2_label_rect.y - 5, 
+                                     p2_label_rect.width + 10, p2_label_rect.height + 10)
+            pygame.draw.rect(self.screen, (255, 100, 100), border_rect, 2)
+        
+        self.screen.blit(p2_label, p2_label_rect)
+
+        # Player 2 pass status (below label)
+        if game_state.players[1].passed:
+            p2_pass = FONT_SMALL.render("PASSED", True, (150, 150, 150))
+            self.screen.blit(p2_pass, (125, 275))
+            
+        # Player 2 won rounds (below pass status)
+        p2_won = game_state.players[1].rounds_won
+        star_x = p2_label_rect.centerx - 16
+        for i in range(p2_won):
+            self.screen.blit(self.star_icon, (star_x, 290 + i * 32))
+        
+        # Player 1 score (you)
         p1_color = (100, 255, 100) if p1_strength > p2_strength else WHITE
-        p1_text = FONT_LARGE.render(f"Player 1: {p1_strength}", True, p1_color)
-        self.screen.blit(p1_text, (35, 520))
+        p1_text = FONT_LARGE.render(f"{p1_strength}", True, p1_color)
+        
+        p1_center = (250, 525)
+        pygame.draw.circle(self.screen, p1_color, p1_center, 30, 3)
+        p1_text_rect = p1_text.get_rect(center=p1_center)
+        self.screen.blit(p1_text, p1_text_rect)
+        
+        # Player 1 label
+        p1_label = FONT_LARGE.render("Player 1", True, WHITE)
+        p1_label_rect = p1_label.get_rect(midleft=(105, 525))
+        
+        # Draw border if it's player 1's turn
+        if game_state.current_player == 0:
+            border_rect = pygame.Rect(p1_label_rect.x - 5, p1_label_rect.y - 5, 
+                                     p1_label_rect.width + 10, p1_label_rect.height + 10)
+            pygame.draw.rect(self.screen, (100, 255, 100), border_rect, 2)
+        
+        self.screen.blit(p1_label, p1_label_rect)
+        
+        # Player 1 pass status (below label)
+        if game_state.players[0].passed:
+            p1_pass = FONT_SMALL.render("PASSED", True, (150, 150, 150))
+            self.screen.blit(p1_pass, (125, 545))
+            
+        # Player 1 won rounds (below pass status)
+        p1_won = game_state.players[0].rounds_won
+        star_x = p1_label_rect.centerx - 16
+        for i in range(p1_won):
+            self.screen.blit(self.star_icon, (star_x, 560+ i * 32))
     
     def handle_input(self, game_state):
         current_player = game_state.players[game_state.current_player]
@@ -485,9 +514,9 @@ class GameGUI:
         table_y += 60
         if winner is not None:
             if winner == 0:
-                subtext = FONT_LARGE.render("You Won the Match!", True, GOLD)
+                subtext = FONT_LARGE.render("Player 1 Won the Match!", True, GOLD)
             else:
-                subtext = FONT_LARGE.render("Opponent Won the Match", True, GRAY)
+                subtext = FONT_LARGE.render("Player 2 Won the Match!", True, GRAY)
         else:
             subtext = FONT_LARGE.render("Match Ended in a Tie", True, GRAY)
         
@@ -540,9 +569,9 @@ class GameGUI:
         self.screen.blit(title, title_rect)
         
         if self.round_winner == 0:
-            subtitle = FONT_LARGE.render("You Won This Round!", True, (100, 255, 100))
+            subtitle = FONT_LARGE.render("Player 1 Won This Round!", True, (100, 255, 100))
         elif self.round_winner == 1:
-            subtitle = FONT_LARGE.render("Opponent Won This Round!", True, (255, 100, 100))
+            subtitle = FONT_LARGE.render("Player 2 Won This Round!", True, (255, 100, 100))
         else:
             subtitle = FONT_LARGE.render("Round Draw!", True, WHITE)
         

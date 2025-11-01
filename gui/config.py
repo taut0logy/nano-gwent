@@ -15,8 +15,8 @@ BLUE = (0, 100, 200)
 RED = (200, 0, 0)
 GOLD = (255, 215, 0)
 
-CARD_WIDTH = 50
-CARD_HEIGHT = 75
+CARD_WIDTH = 60
+CARD_HEIGHT = 85
 CARD_SPACING = 10
 
 FONT_SMALL = pygame.font.Font(None, 20)
@@ -52,9 +52,3 @@ def load_card_image(card_id):
         surface = pygame.Surface((CARD_WIDTH, CARD_HEIGHT))
         surface.fill(GRAY)
         return surface
-
-def load_board_image():
-    path = os.path.join('assets', 'images', 'board.png')
-    if os.path.exists(path):
-        return pygame.image.load(path)
-    return None

@@ -1,5 +1,3 @@
-from core.card import Card
-
 class Action:
     PLAY_UNIT = "play_unit"
     PLAY_SPECIAL = "play_special"
