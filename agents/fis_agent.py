@@ -11,7 +11,6 @@ class FISAgent(BaseAgent):
         if len(valid_actions) == 1:
             return valid_actions[0]
         
-        # Calculate input variables
         my_state = game_state.players[self.player_id]
         opp_state = game_state.players[1 - self.player_id]
         
@@ -24,34 +23,24 @@ class FISAgent(BaseAgent):
         
         rounds_won_diff = my_state.rounds_won - opp_state.rounds_won
         
-        # Constrain inputs to valid ranges
         strength_diff = max(-100, min(100, strength_difference))
         cards_in_hand = my_cards
         round_num = game_state.round_number
         rounds_diff = rounds_won_diff
         opp_cards = opponent_cards
         
-        # Compute fuzzy output
         try:
             aggression_level = self._compute_fuzzy_output(
                 strength_diff, cards_in_hand, round_num, rounds_diff, opp_cards
             )
         except Exception:
-            # If computation fails, default to balanced
             aggression_level = 50
         
-        # Select action based on aggression level
         action = self._select_action_by_aggression(game_state, valid_actions, aggression_level)
         
         return action
     
     def _compute_fuzzy_output(self, strength_diff, cards_in_hand, round_num, rounds_diff, opp_cards):
-        """
-        Steps:
-        1. Fuzzification: Convert crisp inputs to fuzzy membership values
-        2. Rule evaluation: Apply fuzzy rules
-        3. Defuzzification: Convert fuzzy output to crisp value
-        """
         
         # Step 1: FUZZIFICATION - Compute membership values for each input
         
@@ -276,15 +265,6 @@ class FISAgent(BaseAgent):
         return aggression_level
     
     def _trimf(self, x, a, b, c):
-        """
-        Triangular membership function.
-        
-        Parameters:
-        - x: input value
-        - a, b, c: triangle vertices (a <= b <= c)
-        
-        Returns membership value between 0 and 1
-        """
         if x <= a:
             return 0.0 if x < a else (1.0 if a == b else 0.0)
         elif x <= b:
@@ -299,15 +279,6 @@ class FISAgent(BaseAgent):
             return 0.0
     
     def _trapmf(self, x, a, b, c, d):
-        """
-        Trapezoidal membership function.
-        
-        Parameters:
-        - x: input value
-        - a, b, c, d: trapezoid vertices (a <= b <= c <= d)
-        
-        Returns membership value between 0 and 1
-        """
         if x <= a:
             return 0.0 if x < a else (1.0 if a == b else 0.0)
         elif x <= b:
@@ -324,16 +295,6 @@ class FISAgent(BaseAgent):
             return 0.0
     
     def _get_output_membership(self, universe, label):
-        """
-        Get the membership function array for an output label.
-        
-        Output aggression memberships:
-        - very_defensive: [0, 0, 10, 25]
-        - defensive: [15, 30, 45]
-        - balanced: [35, 50, 65]
-        - aggressive: [55, 70, 85]
-        - very_aggressive: [75, 90, 100, 100]
-        """
         membership = np.zeros_like(universe, dtype=float)
         
         for i, x in enumerate(universe):
@@ -351,10 +312,6 @@ class FISAgent(BaseAgent):
         return membership
     
     def _select_action_by_aggression(self, game_state, valid_actions, aggression_level):
-        """
-        Select an action based on the computed aggression level.
-        Identical logic to original FIS agent.
-        """
         my_state = game_state.players[self.player_id]
         opp_state = game_state.players[1 - self.player_id]
         

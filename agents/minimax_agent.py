@@ -10,9 +10,6 @@ class MinimaxAgent(BaseAgent):
         self.nodes_explored = 0
     
     def decide_action(self, game_state, valid_actions):
-        """
-        Choose the best action using Minimax with Alpha-Beta pruning.
-        """
         if len(valid_actions) == 1:
             return valid_actions[0]
         
@@ -57,19 +54,6 @@ class MinimaxAgent(BaseAgent):
         return best_action
     
     def _minimax(self, game_state, depth, alpha, beta, is_maximizing):
-        """
-        Minimax algorithm with alpha-beta pruning.
-        
-        Args:
-            game_state: Current game state
-            depth: Remaining search depth
-            alpha: Alpha value for pruning
-            beta: Beta value for pruning
-            is_maximizing: True if maximizing player's turn
-        
-        Returns:
-            Best value for the current player
-        """
         self.nodes_explored += 1
         
         # Terminal conditions
@@ -139,29 +123,14 @@ class MinimaxAgent(BaseAgent):
             return min_eval
     
     def _terminal(self, game_state):
-        """
-        Evaluate a terminal game state (game over).
-        Returns a high positive value for win, negative for loss, 0 for draw.
-        """
         if game_state.winner is None:
-            return 0  # Draw
+            return 0 
         elif game_state.winner == self.player_id:
-            return 10000  # Win
+            return 10000
         else:
-            return -10000  # Loss
+            return -10000
     
     def _utility(self, game_state):
-        """
-        Heuristic evaluation function for non-terminal states.
-        
-        Considers:
-        1. Rounds won difference (most critical)
-        2. Round outcome prediction
-        3. Card advantage and quality
-        4. Special cards and threats
-        5. Board position and debuffs
-        6. Strategic passing position
-        """
         my_state = game_state.players[self.player_id]
         opp_state = game_state.players[1 - self.player_id]
         

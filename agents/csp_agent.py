@@ -4,26 +4,12 @@ from core.game_engine import GameEngine
 import random
 
 class CSPAgent(BaseAgent):
-    """
-    Constraint Satisfaction Problem (CSP) Agent for Nano Gwent.
-    
-    The CSP formulation:
-    - Variables: Available actions (cards to play or pass)
-    - Domain: Valid actions from game state
-    - Constraints: Game rules + strategic constraints
-    - Objective: Maximize utility while satisfying constraints
-    
-    Approach: Constraint-based optimization with heuristic evaluation
-    """
     
     def __init__(self, player_id):
         super().__init__(player_id)
         self.action_history = []
     
     def decide_action(self, game_state, valid_actions):
-        """
-        Use CSP-based reasoning to select the best action.
-        """
         if len(valid_actions) == 1:
             return valid_actions[0]
         
@@ -56,10 +42,6 @@ class CSPAgent(BaseAgent):
         return best_action
     
     def _apply_hard_constraints(self, game_state, valid_actions, my_state, opp_state):
-        """
-        Apply hard constraints to filter out invalid/suboptimal actions.
-        Hard constraints are rules that must be satisfied.
-        """
         feasible = []
         
         my_strength = my_state.get_board_strength()
@@ -139,10 +121,6 @@ class CSPAgent(BaseAgent):
         return feasible if feasible else valid_actions
     
     def _evaluate_action(self, game_state, action, my_state, opp_state):
-        """
-        Evaluate an action using a utility function with soft constraints.
-        Higher score = better action.
-        """
         score = 0.0
         
         # Get current state information
@@ -320,19 +298,12 @@ class CSPAgent(BaseAgent):
         return score
     
     def _calculate_strength_after_action(self, game_state, action, player_id):
-        """
-        Calculate board strength after applying an action.
-        Helper method for lookahead.
-        """
         sim_state = game_state.clone()
         sim_engine = GameEngine(sim_state)
         sim_engine.execute_action(action)
         return sim_state.players[player_id].get_board_strength()
     
     def _get_card_value_tier(self, strength):
-        """
-        Categorize cards by strength tier.
-        """
         if strength <= 3:
             return "low"
         elif strength <= 6:
