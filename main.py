@@ -9,7 +9,7 @@ from gui.config import SCREEN_WIDTH, SCREEN_HEIGHT
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("Nano Gwent - AI Card Game")
+    pygame.display.set_caption("Nano Gwent")
     
     menu = GameMenu(screen)
     clock = pygame.time.Clock()
