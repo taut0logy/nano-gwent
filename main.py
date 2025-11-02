@@ -11,6 +11,9 @@ def main():
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("Nano Gwent")
     
+    icon = pygame.image.load('assets/images/icon.webp')
+    pygame.display.set_icon(icon)
+    
     menu = GameMenu(screen)
     clock = pygame.time.Clock()
     
@@ -23,21 +26,27 @@ def main():
         game_state = GameState()
         game_state.initialize()
         game_engine = GameEngine(game_state)
-        gui = GameGUI(screen)
         
         player0_agent = None
         player1_agent = None
+        player0_type = "Human"
+        player1_type = "Human"
         
         if game_config['mode'] == 'human_vs_human':
             pass
         elif game_config['mode'] == 'human_vs_ai':
             agent_class = game_config['ai_agent']
             player1_agent = agent_class(1)
+            player1_type = agent_class.__name__.replace('Agent', '')
         elif game_config['mode'] == 'ai_vs_ai':
             agent0_class = game_config['ai_agent_0']
             agent1_class = game_config['ai_agent_1']
             player0_agent = agent0_class(0)
             player1_agent = agent1_class(1)
+            player0_type = agent0_class.__name__.replace('Agent', '')
+            player1_type = agent1_class.__name__.replace('Agent', '')
+        
+        gui = GameGUI(screen, player0_type, player1_type)
         
         gui.last_round_number = 0
         gui.banner_state = None

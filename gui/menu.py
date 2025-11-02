@@ -188,11 +188,11 @@ class GameMenu:
         title_rect = title.get_rect(center=(self.width // 2, 80))
         self.screen.blit(title, title_rect)
         
-        left_label = self.button_font.render("Player 0 (Bottom)", True, COLORS['text'])
+        left_label = self.button_font.render("Player 1 (Bottom)", True, COLORS['text'])
         left_rect = left_label.get_rect(center=(self.width // 4, 180))
         self.screen.blit(left_label, left_rect)
         
-        right_label = self.button_font.render("Player 1 (Top)", True, COLORS['text'])
+        right_label = self.button_font.render("Player 2 (Top)", True, COLORS['text'])
         right_rect = right_label.get_rect(center=(3 * self.width // 4, 180))
         self.screen.blit(right_label, right_rect)
         

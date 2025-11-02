@@ -3,12 +3,15 @@ from gui.config import *
 from gui.components import CardSprite, Button
 from core.action import Action
 class GameGUI:
-    def __init__(self, screen):
+    def __init__(self, screen, player0_type="Human", player1_type="Human"):
         self.screen = screen
         self.selected_card = None
         self.selected_row = None
         self.card_sprites = []
         self.animations = []
+        
+        self.player0_type = player0_type  # "Human", "FIS", "CSP", "Minimax"
+        self.player1_type = player1_type
         
         self.board_rect = pygame.Rect(320, 120, 850, 530)
         
@@ -348,6 +351,11 @@ class GameGUI:
             pygame.draw.rect(self.screen, (255, 100, 100), border_rect, 2)
         
         self.screen.blit(p2_label, p2_label_rect)
+        
+        # Player 2 agent type
+        p2_agent_text = FONT_SMALL.render(f"({self.player1_type})", True, (200, 200, 200))
+        p2_agent_rect = p2_agent_text.get_rect(center=(150, 252))
+        self.screen.blit(p2_agent_text, p2_agent_rect)
 
         # Player 2 pass status
         if game_state.players[1].passed:
@@ -385,6 +393,11 @@ class GameGUI:
             pygame.draw.rect(self.screen, (100, 255, 100), border_rect, 2)
         
         self.screen.blit(p1_label, p1_label_rect)
+        
+        # Player 1 agent type
+        p1_agent_text = FONT_SMALL.render(f"({self.player0_type})", True, (200, 200, 200))
+        p1_agent_rect = p1_agent_text.get_rect(center=(150, 522))
+        self.screen.blit(p1_agent_text, p1_agent_rect)
         
         # Player 1 pass status
         if game_state.players[0].passed:
